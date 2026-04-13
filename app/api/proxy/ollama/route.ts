@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
               endpoint,
               prompt_eval_count: promptTokens,
               eval_count: outputTokens,
-              total_duration: data.total_duration,
+              total_duration: (data.total_duration as number) ?? null,
             },
           },
         });
