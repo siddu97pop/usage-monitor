@@ -30,6 +30,8 @@ export async function GET() {
         if (!codexUsage.available) {
           return { ...p, planUsage: undefined };
         }
+        const has5h = codexUsage.fiveHourPct !== null;
+        const has7d = codexUsage.sevenDayPct !== null;
         return {
           ...p,
           syncStatus: 'synced' as const,
@@ -37,24 +39,30 @@ export async function GET() {
             ? new Date(codexUsage.latestSessionAt * 1000).toISOString()
             : codexUsage.checkedAt,
           modelName: codexUsage.model ?? p.modelName,
-          // Replace mock totalUsage with real session count this week
           totalUsage: codexUsage.sessionsWeek,
           usageUnit: 'sessions',
-          // Surface real token totals
           tokens: codexUsage.tokensWeek || undefined,
           planUsage: {
             tier: codexUsage.tier ?? 'Plus',
             lastUpdated: codexUsage.checkedAt,
             limits: [
               {
-                label: 'Today',
-                sublabel: `${codexUsage.sessionsToday} sessions · ${fmtTokens(codexUsage.tokensToday)} tokens`,
-                percentUsed: 0, // no server-side limit data available
+                label: 'Current Session',
+                sublabel: has5h
+                  ? formatResetTime(codexUsage.resetsAt5h)
+                  : `${codexUsage.sessionsToday} sessions · ${fmtTokens(codexUsage.tokensToday)} tokens`,
+                percentUsed: has5h
+                  ? Math.round((codexUsage.fiveHourPct ?? 0) * 10) / 10
+                  : 0,
               },
               {
-                label: 'This Week',
-                sublabel: `${codexUsage.sessionsWeek} sessions · ${fmtTokens(codexUsage.tokensWeek)} tokens`,
-                percentUsed: 0,
+                label: 'Weekly Limits',
+                sublabel: has7d
+                  ? formatResetTime(codexUsage.resetsAt7d)
+                  : `${codexUsage.sessionsWeek} sessions · ${fmtTokens(codexUsage.tokensWeek)} tokens`,
+                percentUsed: has7d
+                  ? Math.round((codexUsage.sevenDayPct ?? 0) * 10) / 10
+                  : 0,
               },
             ],
           },

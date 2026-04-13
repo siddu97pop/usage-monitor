@@ -12,14 +12,15 @@
 
 import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'module';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
 import os from 'os';
 const require = createRequire(import.meta.url);
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const DB_PATH = path.join(os.homedir(), '.codex', 'state_5.sqlite');
+const DB_PATH      = path.join(os.homedir(), '.codex', 'state_5.sqlite');
+const SESSIONS_DIR = path.join(os.homedir(), '.codex', 'sessions');
 const ENV_PATH = path.join(import.meta.dirname, '..', '.env.local');
 
 // Load .env.local if present
@@ -108,6 +109,66 @@ for (const s of sessions) {
     [id, timestamp, s.tokens_used || null, s.model || 'gpt-5.4', externalId]
   );
   synced++;
+}
+
+// ── Read rate-limit data from latest rollout JSONL ────────────────────────────
+
+function listJsonlFiles(dir) {
+  const results = [];
+  function walk(d) {
+    try {
+      for (const entry of readdirSync(d)) {
+        const full = path.join(d, entry);
+        try {
+          const st = statSync(full);
+          if (st.isDirectory()) walk(full);
+          else if (entry.endsWith('.jsonl')) results.push({ path: full, mtime: st.mtimeMs });
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
+  walk(dir);
+  results.sort((a, b) => b.mtime - a.mtime);
+  return results;
+}
+
+let rateLimitPayload = null;
+if (existsSync(SESSIONS_DIR)) {
+  const weekAgoMs = Date.now() - 7 * 86_400_000;
+  for (const { path: file, mtime } of listJsonlFiles(SESSIONS_DIR)) {
+    if (mtime < weekAgoMs) break;
+    try {
+      const lines = readFileSync(file, 'utf-8').split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const d = JSON.parse(line);
+          const rl = d?.payload?.rate_limits;
+          if (rl?.primary && rl?.secondary) {
+            rateLimitPayload = {
+              primary:   rl.primary,
+              secondary: rl.secondary,
+              plan_type: rl.plan_type ?? null,
+              source_file: file,
+            };
+            break;
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+    if (rateLimitPayload) break;
+  }
+}
+
+// Upsert rate-limit snapshot to SyncLog (provider = 'codex_rl')
+if (rateLimitPayload) {
+  const rlLogId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  await client.query(
+    `INSERT INTO "SyncLog" (id, provider, status, message)
+     VALUES ($1, 'codex_rl', 'success', $2)`,
+    [rlLogId, JSON.stringify(rateLimitPayload)]
+  );
+  console.log(`[${new Date().toISOString()}] Rate limits synced — 5h: ${rateLimitPayload.primary.used_percent}%, 7d: ${rateLimitPayload.secondary.used_percent}%`);
 }
 
 // ── Write SyncLog entry ───────────────────────────────────────────────────────
