@@ -21,7 +21,6 @@ import { promisify } from 'util';
 import { readdirSync, readFileSync, statSync, existsSync } from 'fs';
 import path from 'path';
 import os from 'os';
-import { prisma } from '@/lib/prisma';
 
 const execFileAsync = promisify(execFile);
 const DB_PATH      = path.join(os.homedir(), '.codex', 'state_5.sqlite');
@@ -142,18 +141,24 @@ function readLocalRateLimits(): RateLimitData | null {
 }
 
 /**
- * Fallback: read latest rate-limit snapshot from Supabase SyncLog.
+ * Fallback: read latest rate-limit snapshot from Supabase via REST API.
  * The VPS cron (codex-sync.mjs) writes a SyncLog row with
  *   provider = 'codex_rl' and message = JSON.stringify(RateLimitData)
+ * Uses HTTPS so it works from Vercel (direct TCP to Postgres is blocked).
  */
 async function readSupabaseRateLimits(): Promise<RateLimitData | null> {
+  const url  = process.env.SUPABASE_URL;
+  const key  = process.env.SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
   try {
-    const row = await prisma.syncLog.findFirst({
-      where: { provider: 'codex_rl', status: 'success' },
-      orderBy: { synced_at: 'desc' },
-    });
-    if (!row?.message) return null;
-    return JSON.parse(row.message) as RateLimitData;
+    const res = await fetch(
+      `${url}/rest/v1/SyncLog?provider=eq.codex_rl&status=eq.success&order=synced_at.desc&limit=1`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: 'no-store' }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json() as Array<{ message: string | null }>;
+    if (!rows[0]?.message) return null;
+    return JSON.parse(rows[0].message) as RateLimitData;
   } catch {
     return null;
   }
