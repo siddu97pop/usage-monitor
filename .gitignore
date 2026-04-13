@@ -12,6 +12,7 @@ dist/
 .env
 .env.local
 .env.*.local
+.env.vercel
 
 # Prisma
 prisma/*.db
@@ -24,3 +25,4 @@ tsconfig.tsbuildinfo
 
 # Debug
 npm-debug.log*
+.vercel

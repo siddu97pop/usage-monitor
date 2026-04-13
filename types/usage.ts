@@ -2,24 +2,14 @@ export type Provider = 'codex' | 'claude' | 'ollama';
 export type SyncStatus = 'synced' | 'pending' | 'error' | 'manual';
 export type SourceType = 'subscription' | 'manual' | 'api' | 'proxy';
 
-export interface HourlyDataPoint {
-  label: string;  // "00h", "01h", ..., "23h"
-  value: number;
-}
-
-export interface WeeklyDataPoint {
-  label: string;  // "Mon", "Tue", ..., "Sun"
-  value: number;
-}
-
 export interface PlanLimit {
-  label: string;         // "Current session" | "All models" | "Pro plan"
-  sublabel: string;      // "Resets in 3 hr 26 min" | "Resets Fri 10:00 AM"
+  label: string;         // "Current Session" | "Weekly Limits"
+  sublabel: string;      // "Resets in 3h 26m" | "Resets Fri 10:00 AM"
   percentUsed: number;   // 0–100
 }
 
 export interface PlanUsage {
-  tier: string;          // "Pro" | "Max" | "Free" | "Pro Plan"
+  tier: string;          // "Pro" | "Plus" | "Free"
   limits: PlanLimit[];
   lastUpdated: string;   // ISO string
 }
@@ -33,16 +23,19 @@ export interface ProviderStats {
   usageUnit: string;
   latestSync: string | null;
   syncStatus: SyncStatus;
-  hourlyData: HourlyDataPoint[];
-  weeklyData: WeeklyDataPoint[];
   tokens?: number;
-  estimatedCost?: number;
   modelName?: string;
   sourceType: SourceType;
   planUsage?: PlanUsage;
+  // Codex-specific
+  sessionsToday?: number;
+  sessionsWeek?: number;
+  avgTokens?: number;
+  // Ollama-specific
   liveData?: {
     connected: boolean;
     modelCount: number;
+    models?: string[];
     error?: string;
   };
 }
