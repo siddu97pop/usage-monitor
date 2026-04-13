@@ -82,11 +82,22 @@ async function readFromCache(): Promise<Omit<ClaudeUsageResult, 'available' | 'c
 
 // ── Fetch from API using OAuth token ─────────────────────────────────────────
 
-async function fetchFromApi(): Promise<Omit<ClaudeUsageResult, 'available' | 'checkedAt'> | null> {
+async function getOAuthToken(): Promise<string | null> {
+  // 1. Env var — works on Vercel (set CLAUDE_OAUTH_TOKEN in dashboard)
+  if (process.env.CLAUDE_OAUTH_TOKEN) return process.env.CLAUDE_OAUTH_TOKEN;
+  // 2. Local credentials file — works on VPS
   try {
     const creds = JSON.parse(await fs.readFile(CREDENTIALS_PATH, 'utf-8')) as Record<string, unknown>;
     type OAuthBlock = { accessToken?: string };
-    const token = (creds.claudeAiOauth as OAuthBlock | undefined)?.accessToken;
+    return (creds.claudeAiOauth as OAuthBlock | undefined)?.accessToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchFromApi(): Promise<Omit<ClaudeUsageResult, 'available' | 'checkedAt'> | null> {
+  try {
+    const token = await getOAuthToken();
     if (!token) return null;
 
     const res = await fetch(USAGE_API, {
