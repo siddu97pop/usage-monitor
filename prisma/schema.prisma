@@ -1,0 +1,63 @@
+// ─── Prisma Schema — LexiTools Usage Monitor ─────────────────────────────────
+// Supports: Codex (ChatGPT subscription), Claude (subscription), Ollama (Pro plan)
+// Data model is intentionally flexible — usage units vary by provider.
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Vercel Postgres (Neon) uses pgbouncer — directUrl needed for migrations
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Core usage record ────────────────────────────────────────────────────────
+// One record = one usage event (message, session, run, task, etc.)
+model UsageRecord {
+  id             String   @id @default(cuid())
+
+  // Provider identity
+  provider       String   // "codex" | "claude" | "ollama"
+  source_type    String   // "subscription" | "manual" | "api" | "proxy"
+
+  // When this usage occurred
+  timestamp      DateTime
+
+  // Normalised usage value for charting (always stored regardless of unit)
+  usage_value    Float
+  usage_unit     String   // "messages" | "sessions" | "requests" | "tokens" | "tasks"
+
+  // Raw payload from source — keeps full fidelity for future parsing
+  raw_payload    Json?
+
+  // Sync metadata
+  sync_status    String   @default("pending") // "synced" | "pending" | "error" | "manual"
+  notes          String?
+
+  // Optional enriched fields — populated when available
+  model_name     String?
+  tokens         Int?
+  estimated_cost Float?
+  latency        Float?
+  status         String?
+
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([provider, timestamp])
+  @@index([provider, sync_status])
+}
+
+// ─── Sync log ─────────────────────────────────────────────────────────────────
+// Tracks the last time each provider was synced (manual or automated)
+model SyncLog {
+  id        String   @id @default(cuid())
+  provider  String
+  synced_at DateTime @default(now())
+  status    String   // "success" | "error" | "manual"
+  message   String?
+
+  @@index([provider, synced_at])
+}
