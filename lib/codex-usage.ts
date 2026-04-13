@@ -21,6 +21,7 @@ import { promisify } from 'util';
 import { readdirSync, readFileSync, statSync, existsSync } from 'fs';
 import path from 'path';
 import os from 'os';
+import { prisma } from '@/lib/prisma';
 
 const execFileAsync = promisify(execFile);
 const DB_PATH      = path.join(os.homedir(), '.codex', 'state_5.sqlite');
@@ -147,7 +148,6 @@ function readLocalRateLimits(): RateLimitData | null {
  */
 async function readSupabaseRateLimits(): Promise<RateLimitData | null> {
   try {
-    const { prisma } = await import('@/lib/prisma');
     const row = await prisma.syncLog.findFirst({
       where: { provider: 'codex_rl', status: 'success' },
       orderBy: { synced_at: 'desc' },

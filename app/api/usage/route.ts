@@ -39,9 +39,9 @@ export async function GET() {
             ? new Date(codexUsage.latestSessionAt * 1000).toISOString()
             : codexUsage.checkedAt,
           modelName: codexUsage.model ?? p.modelName,
-          totalUsage: codexUsage.sessionsWeek,
+          totalUsage: codexUsage.sessionsWeek || p.totalUsage,
           usageUnit: 'sessions',
-          tokens: codexUsage.tokensWeek || undefined,
+          tokens: codexUsage.tokensWeek || p.tokens,
           planUsage: {
             tier: codexUsage.tier ?? 'Plus',
             lastUpdated: codexUsage.checkedAt,
