@@ -63,41 +63,18 @@ function fmtSync(iso: string | null) {
 // ── Per-provider body sections ────────────────────────────────────────────────
 
 function CodexBody({ stats }: { stats: ProviderStats }) {
-  const { accent, sessionsToday, sessionsWeek, avgTokens, tokens, planUsage } = stats;
-  const hasStats = (sessionsWeek ?? 0) > 0 || (tokens ?? 0) > 0;
+  const { accent, planUsage } = stats;
 
-  return (
-    <>
-      {hasStats && (
-        <div className="grid grid-cols-3 gap-3">
-          <StatPill
-            label="Today"
-            value={`${sessionsToday ?? 0} sessions`}
-            accent={accent}
-          />
-          <StatPill
-            label="This Week"
-            value={`${sessionsWeek ?? 0} sessions`}
-            accent={accent}
-          />
-          <StatPill
-            label="Avg / Session"
-            value={avgTokens ? fmtTokens(avgTokens) + ' tok' : fmtTokens(tokens) + ' total'}
-            accent={accent}
-          />
-        </div>
-      )}
+  if (!planUsage) {
+    return (
+      <div className="rounded-lg border border-[#1e1e2e] bg-[#0d0d14] px-4 py-6 text-center">
+        <p className="text-[12px] text-slate-500">Usage data syncing…</p>
+        <p className="mt-0.5 text-[11px] text-slate-600">Cron runs every 5 min</p>
+      </div>
+    );
+  }
 
-      {planUsage ? (
-        <PlanUsageLimits planUsage={planUsage} accent={accent} />
-      ) : (
-        <div className="rounded-lg border border-[#1e1e2e] bg-[#0d0d14] px-4 py-6 text-center">
-          <p className="text-[12px] text-slate-500">Usage data syncing…</p>
-          <p className="mt-0.5 text-[11px] text-slate-600">Cron runs every 5 min</p>
-        </div>
-      )}
-    </>
-  );
+  return <PlanUsageLimits planUsage={planUsage} accent={accent} />;
 }
 
 function ClaudeBody({ stats }: { stats: ProviderStats }) {
@@ -107,7 +84,7 @@ function ClaudeBody({ stats }: { stats: ProviderStats }) {
     return (
       <div className="rounded-lg border border-[#1e1e2e] bg-[#0d0d14] px-4 py-6 text-center">
         <p className="text-[12px] text-slate-500">Rate limit data unavailable</p>
-        <p className="mt-0.5 text-[11px] text-slate-600">Requires active Claude session</p>
+        <p className="mt-0.5 text-[11px] text-slate-600">OAuth token missing or expired</p>
       </div>
     );
   }

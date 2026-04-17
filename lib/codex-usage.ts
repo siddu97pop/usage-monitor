@@ -186,6 +186,16 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
   const localRL = readLocalRateLimits();
   const rl: RateLimitData | null = localRL ?? await readSupabaseRateLimits();
 
+  // If the reset timestamp has already passed, the stale snapshot's percentage
+  // is meaningless — zero it out so we don't show 100% on a fresh window.
+  const nowSecs = Math.floor(Date.now() / 1000);
+  const effective5hPct = rl && rl.primary.resets_at > 0 && rl.primary.resets_at <= nowSecs
+    ? 0
+    : rl?.primary.used_percent ?? null;
+  const effective7dPct = rl && rl.secondary.resets_at > 0 && rl.secondary.resets_at <= nowSecs
+    ? 0
+    : rl?.secondary.used_percent ?? null;
+
   // ── Session counts + tokens from SQLite ──────────────────────────────────
   if (!existsSync(DB_PATH)) {
     // Vercel / no SQLite — return what we have from Supabase
@@ -194,8 +204,8 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
       ...unavailable,
       available: true,
       tier: rl.plan_type ?? 'Plus',
-      fiveHourPct:  rl.primary.used_percent,
-      sevenDayPct:  rl.secondary.used_percent,
+      fiveHourPct:  effective5hPct,
+      sevenDayPct:  effective7dPct,
       resetsAt5h:   rl.primary.resets_at,
       resetsAt7d:   rl.secondary.resets_at,
       checkedAt,
@@ -224,8 +234,8 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
       tokensToday:     data.today.tok ?? 0,
       tokensWeek:      data.week.tok  ?? 0,
       latestSessionAt: data.latest?.updated_at ?? null,
-      fiveHourPct:     rl?.primary.used_percent   ?? null,
-      sevenDayPct:     rl?.secondary.used_percent ?? null,
+      fiveHourPct:     effective5hPct,
+      sevenDayPct:     effective7dPct,
       resetsAt5h:      rl?.primary.resets_at      ?? null,
       resetsAt7d:      rl?.secondary.resets_at    ?? null,
       checkedAt,

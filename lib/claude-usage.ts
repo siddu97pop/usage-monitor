@@ -133,7 +133,23 @@ export async function getClaudeUsage(): Promise<ClaudeUsageResult> {
   const result = (await readFromCache()) ?? (await fetchFromApi());
   if (!result) return unavailable;
 
-  return { available: true, checkedAt, ...result };
+  // If the reset timestamp has already passed, the stale percentage is
+  // meaningless — zero it out so we don't show 100% on a fresh window.
+  const nowSecs = Math.floor(Date.now() / 1000);
+  const effective5hPct = result.resetsAt5h !== null && result.resetsAt5h <= nowSecs
+    ? 0
+    : result.fiveHourPct;
+  const effective7dPct = result.resetsAt7d !== null && result.resetsAt7d <= nowSecs
+    ? 0
+    : result.sevenDayPct;
+
+  return {
+    available: true,
+    checkedAt,
+    ...result,
+    fiveHourPct: effective5hPct,
+    sevenDayPct: effective7dPct,
+  };
 }
 
 /** Formats a Unix timestamp as "Resets in Xh YYm" / "Resets in Xd Yh" (or "Resetting now"). */
