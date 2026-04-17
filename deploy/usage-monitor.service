@@ -1,0 +1,19 @@
+[Unit]
+Description=LexiTools Usage Monitor (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/data/obsidian/projects/Usage Multi Model/usage-monitor
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next dev --port 3099
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/usage-monitor.log
+StandardError=append:/var/log/usage-monitor.log
+
+# Give the server 30s to start up before systemd marks it healthy
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target
