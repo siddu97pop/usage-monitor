@@ -117,6 +117,26 @@ async function fetchFromApi(): Promise<Omit<ClaudeUsageResult, 'available' | 'ch
   }
 }
 
+// ── Supabase fallback (for Vercel — no local filesystem or credentials) ──────
+
+async function readFromSupabase(): Promise<Omit<ClaudeUsageResult, 'available' | 'checkedAt'> | null> {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/SyncLog?provider=eq.claude_rl&status=eq.success&order=synced_at.desc&limit=1`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: 'no-store' }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json() as Array<{ message: string | null }>;
+    if (!rows[0]?.message) return null;
+    return parseUsageJson(JSON.parse(rows[0].message) as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function getClaudeUsage(): Promise<ClaudeUsageResult> {
@@ -130,7 +150,7 @@ export async function getClaudeUsage(): Promise<ClaudeUsageResult> {
     checkedAt,
   };
 
-  const result = (await readFromCache()) ?? (await fetchFromApi());
+  const result = (await readFromCache()) ?? (await fetchFromApi()) ?? (await readFromSupabase());
   if (!result) return unavailable;
 
   // If the reset timestamp has already passed, the stale percentage is
