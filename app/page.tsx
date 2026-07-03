@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Header from '@/components/Header';
 import ProviderCard from '@/components/ProviderCard';
+import PageTabs from '@/components/PageTabs';
 import type { UsageResponse } from '@/types/usage';
 
 function CardSkeleton() {
@@ -75,6 +76,8 @@ export default function UsagePage() {
           isRefreshing={refreshing}
           onRefresh={() => fetchData(true)}
         />
+
+        <PageTabs />
 
         {error && (
           <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 text-[13px] text-red-400">
