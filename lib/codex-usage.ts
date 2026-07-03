@@ -51,6 +51,7 @@ interface RateLimitData {
   secondary: RateLimitWindow; // 7-day
   plan_type: string | null;
   source_file: string;
+  observed_at?: string;
 }
 
 export interface CodexUsageResult {
@@ -108,6 +109,7 @@ function readLocalRateLimits(): RateLimitData | null {
   const files = listRolloutFiles();
   // Only look at files modified in the last 7 days
   const weekAgoMs = Date.now() - 7 * 86_400_000;
+  let latest: { data: RateLimitData; timestamp: number } | null = null;
 
   for (const file of files) {
     try {
@@ -115,7 +117,8 @@ function readLocalRateLimits(): RateLimitData | null {
       if (st.mtimeMs < weekAgoMs) break; // sorted by mtime desc, stop early
 
       const lines = readFileSync(file, 'utf-8').split('\n');
-      for (const line of lines) {
+      for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
         if (!line.trim()) continue;
         try {
           const d = JSON.parse(line) as Record<string, unknown>;
@@ -126,18 +129,22 @@ function readLocalRateLimits(): RateLimitData | null {
             typeof rl.primary === 'object' && rl.primary !== null &&
             typeof rl.secondary === 'object' && rl.secondary !== null
           ) {
-            return {
+            const observedAt = typeof d.timestamp === 'string' ? d.timestamp : undefined;
+            const timestamp = observedAt ? Date.parse(observedAt) : st.mtimeMs + index / Math.max(lines.length, 1);
+            if (!Number.isFinite(timestamp) || (latest && timestamp <= latest.timestamp)) continue;
+            latest = { timestamp, data: {
               primary:   rl.primary   as RateLimitWindow,
               secondary: rl.secondary as RateLimitWindow,
               plan_type: (rl.plan_type as string | null) ?? null,
               source_file: file,
-            };
+              observed_at: observedAt,
+            } };
           }
         } catch { /* malformed line */ }
       }
     } catch { /* skip file */ }
   }
-  return null;
+  return latest?.data ?? null;
 }
 
 /**

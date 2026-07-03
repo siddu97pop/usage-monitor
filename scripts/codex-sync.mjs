@@ -133,30 +133,35 @@ function listJsonlFiles(dir) {
 }
 
 let rateLimitPayload = null;
+let rateLimitTimestamp = -Infinity;
 if (existsSync(SESSIONS_DIR)) {
   const weekAgoMs = Date.now() - 7 * 86_400_000;
   for (const { path: file, mtime } of listJsonlFiles(SESSIONS_DIR)) {
     if (mtime < weekAgoMs) break;
     try {
       const lines = readFileSync(file, 'utf-8').split('\n');
-      for (const line of lines) {
+      for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
         if (!line.trim()) continue;
         try {
           const d = JSON.parse(line);
           const rl = d?.payload?.rate_limits;
           if (rl?.primary && rl?.secondary) {
+            const observedAt = typeof d.timestamp === 'string' ? d.timestamp : null;
+            const timestamp = observedAt ? Date.parse(observedAt) : mtime + index / Math.max(lines.length, 1);
+            if (!Number.isFinite(timestamp) || timestamp <= rateLimitTimestamp) continue;
+            rateLimitTimestamp = timestamp;
             rateLimitPayload = {
               primary:   rl.primary,
               secondary: rl.secondary,
               plan_type: rl.plan_type ?? null,
               source_file: file,
+              observed_at: observedAt,
             };
-            break;
           }
         } catch { /* skip */ }
       }
     } catch { /* skip */ }
-    if (rateLimitPayload) break;
   }
 }
 
