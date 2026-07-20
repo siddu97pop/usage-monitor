@@ -88,6 +88,10 @@ const CLAUDE_USD_RATES: Record<string, { input: number; cacheRead: number; cache
   'claude-opus-4-6': { input: 15, cacheRead: 1.5, cacheWrite: 30, output: 75 },
   'claude-sonnet-5': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
   'claude-sonnet-4-6': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
+  'claude-sonnet-4-5': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
+  'claude-sonnet-4-5-20250929': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
+  'claude-opus-4-5': { input: 5, cacheRead: 0.5, cacheWrite: 10, output: 25 },
+  'claude-opus-4-5-20251101': { input: 5, cacheRead: 0.5, cacheWrite: 10, output: 25 },
   'claude-haiku-4-5': { input: 1, cacheRead: 0.1, cacheWrite: 2, output: 5 },
   'claude-haiku-4-5-20251001': { input: 1, cacheRead: 0.1, cacheWrite: 2, output: 5 },
 };
