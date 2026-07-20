@@ -70,6 +70,9 @@ export interface AnalyticsResponse {
 
 const CODEX_CREDIT_RATES: Record<string, { input: number; cached: number; output: number }> = {
   'gpt-5.6-sol': { input: 62.5, cached: 6.25, output: 375 },
+  'gpt-5.6-terra': { input: 31.25, cached: 3.125, output: 187.5 },
+  'gpt-5.6-luna': { input: 12.5, cached: 1.25, output: 75 },
+  'gpt-5.6': { input: 62.5, cached: 6.25, output: 375 },
   'gpt-5.5': { input: 62.5, cached: 6.25, output: 375 },
   'gpt-5.4': { input: 62.5, cached: 6.25, output: 375 },
   'gpt-5.4-mini': { input: 18.75, cached: 1.875, output: 113 },
