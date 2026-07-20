@@ -36,7 +36,7 @@ function nullableAverage(values: Array<number | null>) {
 
 export async function GET(request: NextRequest) {
   const requestedDays = Number(request.nextUrl.searchParams.get('days') ?? 30);
-  const days = [7, 30, 90].includes(requestedDays) ? requestedDays : 30;
+  const days = [1, 7, 30, 90].includes(requestedDays) ? requestedDays : 30;
   const rawProvider = request.nextUrl.searchParams.get('provider');
   const provider: AnalyticsProvider | 'all' = rawProvider === 'claude' || rawProvider === 'codex' ? rawProvider : 'all';
   const empty: AnalyticsResponse = {

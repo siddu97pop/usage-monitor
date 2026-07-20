@@ -113,7 +113,7 @@ export default function StatisticsDashboard() {
               {(['all', 'claude', 'codex'] as const).map((value) => <button key={value} onClick={() => setProvider(value)} aria-pressed={provider === value} className={`min-h-9 rounded-md px-3 text-[11px] font-medium capitalize transition-colors ${provider === value ? 'bg-[#242433] text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}>{value}</button>)}
             </div>
             <div className="flex rounded-lg border border-[#1e1e2e] bg-[#111118] p-1">
-              {[7, 30, 90].map((value) => <button key={value} onClick={() => setDays(value)} aria-pressed={days === value} className={`min-h-9 rounded-md px-3 text-[11px] font-medium transition-colors ${days === value ? 'bg-[#242433] text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}>{value}d</button>)}
+              {[1, 7, 30, 90].map((value) => <button key={value} onClick={() => setDays(value)} aria-pressed={days === value} className={`min-h-9 rounded-md px-3 text-[11px] font-medium transition-colors ${days === value ? 'bg-[#242433] text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}>{value}d</button>)}
             </div>
           </div>
         </div>

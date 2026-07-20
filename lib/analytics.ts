@@ -69,6 +69,8 @@ export interface AnalyticsResponse {
 }
 
 const CODEX_CREDIT_RATES: Record<string, { input: number; cached: number; output: number }> = {
+  'gpt-5.6-sol': { input: 62.5, cached: 6.25, output: 375 },
+  'gpt-5.5': { input: 62.5, cached: 6.25, output: 375 },
   'gpt-5.4': { input: 62.5, cached: 6.25, output: 375 },
   'gpt-5.4-mini': { input: 18.75, cached: 1.875, output: 113 },
   'gpt-5.3-codex': { input: 43.75, cached: 4.375, output: 350 },
@@ -77,9 +79,14 @@ const CODEX_CREDIT_RATES: Record<string, { input: number; cached: number; output
 
 // API-equivalent rates are intentionally limited to stable, public model IDs.
 const CLAUDE_USD_RATES: Record<string, { input: number; cacheRead: number; cacheWrite: number; output: number }> = {
-  'claude-sonnet-4-6': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
+  'claude-fable-5': { input: 10, cacheRead: 1, cacheWrite: 20, output: 50 },
+  'claude-opus-4-8': { input: 5, cacheRead: 0.5, cacheWrite: 10, output: 25 },
+  'claude-opus-4-7': { input: 5, cacheRead: 0.5, cacheWrite: 10, output: 25 },
   'claude-opus-4-6': { input: 15, cacheRead: 1.5, cacheWrite: 30, output: 75 },
+  'claude-sonnet-5': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
+  'claude-sonnet-4-6': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
   'claude-haiku-4-5': { input: 1, cacheRead: 0.1, cacheWrite: 2, output: 5 },
+  'claude-haiku-4-5-20251001': { input: 1, cacheRead: 0.1, cacheWrite: 2, output: 5 },
 };
 
 export function calculateEstimates(provider: AnalyticsProvider, model: string, payload: AnalyticsPayload) {
