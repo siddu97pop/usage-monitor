@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   const empty: AnalyticsResponse = {
     summary: { totalTokens: 0, sessions: 0, activeDays: 0, averageTokensPerSession: 0, apiEquivalentCost: null, codexCredits: null, cacheHitRatio: null, outputInputRatio: null, averageContextUtilization: null, compactions: 0, averageDurationMs: null, averageTimeToFirstTokenMs: null },
     daily: [], providers: [], models: [], projects: [], heatmap: [], sessions: [],
-    range: { days, provider, timezone: 'Asia/Dubai' }, dataQuality: { measuredSessions: 0, partialSessions: 0, lastSync: null }, refreshedAt: new Date().toISOString(),
+    range: { days, provider, timezone: 'Asia/Dubai' }, dataQuality: { measuredSessions: 0, partialSessions: 0, apiEquivalentSessions: 0, codexCreditSessions: 0, lastSync: null }, refreshedAt: new Date().toISOString(),
   };
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return NextResponse.json(empty);
@@ -64,11 +64,14 @@ export async function GET(request: NextRequest) {
 
     const sessions: AnalyticsSession[] = rows.map((row) => {
       const payload = row.raw_payload ?? {};
-      const inputTokens = Number(payload.input_tokens ?? 0);
+      const rawInputTokens = Number(payload.input_tokens ?? 0);
       const outputTokens = Number(payload.output_tokens ?? 0);
       const cachedTokens = Number(payload.cached_input_tokens ?? 0);
       const cacheCreationTokens = Number(payload.cache_creation_tokens ?? 0);
       const reasoningTokens = Number(payload.reasoning_tokens ?? 0);
+      // Codex reports cached input as part of input_tokens; Claude reports it
+      // separately. Normalize both providers to uncached input for analytics.
+      const inputTokens = row.provider === 'codex' ? Math.max(0, rawInputTokens - cachedTokens) : rawInputTokens;
       const totalTokens = Number(row.tokens ?? inputTokens + outputTokens + cachedTokens + cacheCreationTokens);
       const estimates = calculateEstimates(row.provider, row.model_name ?? 'unknown', payload);
       const contextWindow = Number(payload.context_window ?? 0);
@@ -143,6 +146,8 @@ export async function GET(request: NextRequest) {
       dataQuality: {
         measuredSessions: sessions.filter((session) => Number(rows.find((row) => row.id === session.id)?.raw_payload?.analytics_version) === 2).length,
         partialSessions: sessions.filter((session) => Number(rows.find((row) => row.id === session.id)?.raw_payload?.analytics_version) !== 2).length,
+        apiEquivalentSessions: usdValues.length,
+        codexCreditSessions: creditValues.length,
         lastSync: syncRows[0]?.synced_at ?? null,
       },
       refreshedAt: new Date().toISOString(),

@@ -125,6 +125,7 @@ function parseCodex(file) {
   // `total_token_usage` is cumulative for the whole thread; `last_token_usage`
   // represents the current request and is the appropriate context-window proxy.
   const peakContext = tokenRows.reduce((peak, row) => Math.max(peak, Number(row.payload.info?.last_token_usage?.total_tokens ?? 0)), 0);
+  const peakInput = tokenRows.reduce((peak, row) => Math.max(peak, Number(row.payload.info?.last_token_usage?.input_tokens ?? 0)), 0);
 
   return {
     provider: 'codex',
@@ -145,6 +146,7 @@ function parseCodex(file) {
         : null,
       context_window: contextWindow,
       peak_context_tokens: peakContext || null,
+      peak_input_tokens: peakInput || null,
       compactions: rows.filter((row) => row.type === 'compacted' || row.payload?.type === 'context_compacted').length,
       tool_calls: rows.filter((row) => row.type === 'response_item' && row.payload?.type === 'function_call').length,
       web_searches: rows.filter((row) => row.payload?.type === 'web_search_end').length,

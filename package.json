@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "test": "ts-node --compiler-options '{\"module\":\"CommonJS\",\"moduleResolution\":\"Node\"}' scripts/verify-analytics-rates.ts",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
