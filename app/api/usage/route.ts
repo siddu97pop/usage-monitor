@@ -8,12 +8,6 @@ import type { UsageResponse } from '@/types/usage';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
-  return n.toString();
-}
-
 export async function GET() {
   try {
     const [providers, ollamaHealth, claudeUsage, codexUsage] = await Promise.all([
@@ -39,6 +33,19 @@ export async function GET() {
             ? Math.round(codexUsage.tokensWeek / codexUsage.sessionsWeek)
             : undefined;
 
+        const limits = [
+          has5h ? {
+            label: 'Current Session',
+            sublabel: formatResetTime(codexUsage.resetsAt5h),
+            percentUsed: Math.round((codexUsage.fiveHourPct ?? 0) * 10) / 10,
+          } : null,
+          has7d ? {
+            label: 'Weekly Limits',
+            sublabel: formatResetTime(codexUsage.resetsAt7d),
+            percentUsed: Math.round((codexUsage.sevenDayPct ?? 0) * 10) / 10,
+          } : null,
+        ].filter((limit): limit is NonNullable<typeof limit> => limit !== null);
+
         return {
           ...p,
           syncStatus: 'synced' as const,
@@ -52,30 +59,11 @@ export async function GET() {
           sessionsToday: codexUsage.sessionsToday,
           sessionsWeek: codexUsage.sessionsWeek,
           avgTokens,
-          planUsage: {
+          planUsage: limits.length ? {
             tier: codexUsage.tier ?? 'Plus',
             lastUpdated: codexUsage.checkedAt,
-            limits: [
-              {
-                label: 'Current Session',
-                sublabel: has5h
-                  ? formatResetTime(codexUsage.resetsAt5h)
-                  : `${codexUsage.sessionsToday} sessions · ${fmtTokens(codexUsage.tokensToday)} tokens`,
-                percentUsed: has5h
-                  ? Math.round((codexUsage.fiveHourPct ?? 0) * 10) / 10
-                  : 0,
-              },
-              {
-                label: 'Weekly Limits',
-                sublabel: has7d
-                  ? formatResetTime(codexUsage.resetsAt7d)
-                  : `${codexUsage.sessionsWeek} sessions · ${fmtTokens(codexUsage.tokensWeek)} tokens`,
-                percentUsed: has7d
-                  ? Math.round((codexUsage.sevenDayPct ?? 0) * 10) / 10
-                  : 0,
-              },
-            ],
-          },
+            limits,
+          } : undefined,
         };
       }
 

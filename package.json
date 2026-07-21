@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "test": "ts-node --compiler-options '{\"module\":\"CommonJS\",\"moduleResolution\":\"Node\"}' scripts/verify-analytics-rates.ts",
+    "test": "ts-node --compiler-options '{\"module\":\"CommonJS\",\"moduleResolution\":\"Node\"}' scripts/verify-analytics-rates.ts && node scripts/verify-codex-rate-limits.mjs",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",

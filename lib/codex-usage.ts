@@ -6,11 +6,9 @@
  * 1. ~/.codex/state_5.sqlite — session counts and token totals (spawns a child
  *    process to bypass Turbopack bundler issues with node:sqlite).
  *
- * 2. ~/.codex/sessions/**\/*.jsonl — rollout files written by the Codex TUI.
- *    Each session start emits a payload that includes real-time rate-limit data:
- *      primary   → 5-hour window  (used_percent, resets_at)
- *      secondary → 7-day window   (used_percent, resets_at)
- *    These are parsed from the most-recently-modified JSONL file.
+ * 2. Rate-limit snapshots synced by the VPS cron. Current Codex clients expose
+ *    these through the app-server protocol; older clients also wrote them into
+ *    rollout JSONL.
  *
  * On Vercel (no local filesystem): falls back to a SyncLog row in Supabase that
  * the VPS cron script writes after every sync.
@@ -44,11 +42,12 @@ interface RateLimitWindow {
   used_percent: number;
   window_minutes: number;
   resets_at: number; // Unix timestamp (seconds)
+  synthetic?: boolean;
 }
 
 interface RateLimitData {
-  primary:   RateLimitWindow; // 5-hour
-  secondary: RateLimitWindow; // 7-day
+  primary:   RateLimitWindow | null; // normalized 5-hour window
+  secondary: RateLimitWindow | null; // normalized 7-day window
   plan_type: string | null;
   source_file: string;
   observed_at?: string;
@@ -126,8 +125,8 @@ function readLocalRateLimits(): RateLimitData | null {
           const rl = payload.rate_limits as Record<string, unknown> | undefined;
           if (
             rl &&
-            typeof rl.primary === 'object' && rl.primary !== null &&
-            typeof rl.secondary === 'object' && rl.secondary !== null
+            (typeof rl.primary === 'object' && rl.primary !== null) &&
+            (typeof rl.secondary === 'object' && rl.secondary !== null)
           ) {
             const observedAt = typeof d.timestamp === 'string' ? d.timestamp : undefined;
             const timestamp = observedAt ? Date.parse(observedAt) : st.mtimeMs + index / Math.max(lines.length, 1);
@@ -194,14 +193,18 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
   const rl: RateLimitData | null = localRL ?? await readSupabaseRateLimits();
 
   // If the reset timestamp has already passed, the stale snapshot's percentage
-  // is meaningless — zero it out so we don't show 100% on a fresh window.
+  // is no longer a measurement of the current window. Treat it as unavailable
+  // instead of presenting a misleading 0% value.
   const nowSecs = Math.floor(Date.now() / 1000);
-  const effective5hPct = rl && rl.primary.resets_at > 0 && rl.primary.resets_at <= nowSecs
-    ? 0
-    : rl?.primary.used_percent ?? null;
-  const effective7dPct = rl && rl.secondary.resets_at > 0 && rl.secondary.resets_at <= nowSecs
-    ? 0
-    : rl?.secondary.used_percent ?? null;
+  const fiveHourWindow = rl?.primary?.window_minutes === 300 ? rl.primary : null;
+  const sevenDayWindow = rl?.secondary?.window_minutes === 10_080 ? rl.secondary : null;
+  const effective5hPct = fiveHourWindow && fiveHourWindow.resets_at > 0 && fiveHourWindow.resets_at <= nowSecs
+    ? null
+    : fiveHourWindow?.used_percent ?? null;
+  const effective7dPct = sevenDayWindow && sevenDayWindow.resets_at > 0 && sevenDayWindow.resets_at <= nowSecs
+    ? null
+    : sevenDayWindow?.used_percent ?? null;
+  const rateLimitCheckedAt = rl?.observed_at ?? checkedAt;
 
   // ── Session counts + tokens from SQLite ──────────────────────────────────
   if (!existsSync(DB_PATH)) {
@@ -213,9 +216,9 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
       tier: rl.plan_type ?? 'Plus',
       fiveHourPct:  effective5hPct,
       sevenDayPct:  effective7dPct,
-      resetsAt5h:   rl.primary.resets_at,
-      resetsAt7d:   rl.secondary.resets_at,
-      checkedAt,
+      resetsAt5h:   fiveHourWindow?.resets_at ?? null,
+      resetsAt7d:   sevenDayWindow?.resets_at ?? null,
+      checkedAt: rateLimitCheckedAt,
     };
   }
 
@@ -243,9 +246,9 @@ export async function getCodexUsage(): Promise<CodexUsageResult> {
       latestSessionAt: data.latest?.updated_at ?? null,
       fiveHourPct:     effective5hPct,
       sevenDayPct:     effective7dPct,
-      resetsAt5h:      rl?.primary.resets_at      ?? null,
-      resetsAt7d:      rl?.secondary.resets_at    ?? null,
-      checkedAt,
+      resetsAt5h:      fiveHourWindow?.resets_at ?? null,
+      resetsAt7d:      sevenDayWindow?.resets_at ?? null,
+      checkedAt: rateLimitCheckedAt,
     };
   } catch {
     return unavailable;
