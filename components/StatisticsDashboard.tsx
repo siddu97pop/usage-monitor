@@ -132,21 +132,21 @@ export default function StatisticsDashboard() {
             </section>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.75fr)]">
-              <section className="rounded-xl border border-[#1e1e2e] bg-[#111118] p-4 sm:p-5">
+              <section className="min-w-0 rounded-xl border border-[#1e1e2e] bg-[#111118] p-4 sm:p-5">
                 <div className="mb-5 flex items-center justify-between"><div><h3 className="text-[13px] font-semibold text-slate-200">Token activity</h3><p className="mt-1 text-[11px] text-slate-600">Daily token composition</p></div><span className="font-mono text-[10px] text-slate-600">Asia/Dubai</span></div>
                 <div className="h-72" role="img" aria-label="Daily stacked token activity chart">
                   <ResponsiveContainer width="100%" height="100%"><AreaChart data={daily} margin={{ left: -20, right: 4 }}><defs><linearGradient id="inputFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.35}/><stop offset="100%" stopColor="#10b981" stopOpacity={0.02}/></linearGradient></defs><CartesianGrid stroke="#1e1e2e" vertical={false}/><XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={24}/><YAxis tickFormatter={(value) => tokenFormatter.format(value)} tickLine={false} axisLine={false}/><Tooltip content={<ChartTooltip />}/><Legend wrapperStyle={{ fontSize: 10, color: '#64748b' }}/><Area type="monotone" stackId="tokens" dataKey="input" name="Input" stroke="#10b981" fill="url(#inputFill)"/><Area type="monotone" stackId="tokens" dataKey="cached" name="Cached" stroke="#60a5fa" fill="#60a5fa" fillOpacity={0.15}/><Area type="monotone" stackId="tokens" dataKey="output" name="Output" stroke="#a78bfa" fill="#a78bfa" fillOpacity={0.18}/><Area type="monotone" stackId="tokens" dataKey="reasoning" name="Reasoning" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.12}/></AreaChart></ResponsiveContainer>
                 </div>
               </section>
 
-              <section className="rounded-xl border border-[#1e1e2e] bg-[#111118] p-4 sm:p-5">
+              <section className="min-w-0 rounded-xl border border-[#1e1e2e] bg-[#111118] p-4 sm:p-5">
                 <h3 className="text-[13px] font-semibold text-slate-200">Provider share</h3><p className="mt-1 text-[11px] text-slate-600">Tokens by source</p>
                 <div className="mt-5 h-72" role="img" aria-label="Provider token comparison chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.providers} layout="vertical" margin={{ left: 2, right: 10 }}><CartesianGrid stroke="#1e1e2e" horizontal={false}/><XAxis type="number" tickFormatter={(value) => tokenFormatter.format(value)} tickLine={false} axisLine={false}/><YAxis type="category" dataKey="name" width={52} tickLine={false} axisLine={false}/><Tooltip content={<ChartTooltip />}/><Bar dataKey="tokens" name="Tokens" fill="#10b981" radius={[0, 3, 3, 0]} maxBarSize={28}/></BarChart></ResponsiveContainer></div>
               </section>
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(250px,0.65fr)_minmax(0,1.35fr)]">
-              <section className="rounded-xl border border-[#1e1e2e] bg-[#111118] p-4 sm:p-5">
+              <section className="min-w-0 rounded-xl border border-[#1e1e2e] bg-[#111118] p-4 sm:p-5">
                 <h3 className="text-[13px] font-semibold text-slate-200">Efficiency & performance</h3>
                 <p className="mt-1 text-[11px] text-slate-600">How effectively context and time are used</p>
                 <div className="mt-5 divide-y divide-[#1e1e2e]">
@@ -158,7 +158,7 @@ export default function StatisticsDashboard() {
                 </div>
               </section>
 
-              <section className="rounded-xl border border-[#1e1e2e] bg-[#111118] p-4 sm:p-5">
+              <section className="min-w-0 rounded-xl border border-[#1e1e2e] bg-[#111118] p-4 sm:p-5">
                 <div className="mb-5 flex items-start justify-between gap-4"><div><h3 className="text-[13px] font-semibold text-slate-200">Activity pattern</h3><p className="mt-1 text-[11px] text-slate-600">Tokens by weekday and hour</p></div><span className="font-mono text-[10px] text-slate-600">Dubai time</span></div>
                 <ActivityHeatmap values={data.heatmap} />
                 <div className="mt-3 flex items-center justify-end gap-1.5 text-[9px] text-slate-700"><span>Less</span>{[0.08, 0.22, 0.45, 0.7, 1].map((opacity) => <span key={opacity} className="h-2.5 w-2.5 rounded-[2px]" style={{ backgroundColor: `rgba(16,185,129,${opacity})` }} />)}<span>More</span></div>
