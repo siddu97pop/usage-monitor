@@ -8,7 +8,13 @@ export interface AnalyticsPayload {
   output_tokens?: number;
   cached_input_tokens?: number;
   cache_creation_tokens?: number;
+  // v3: cache writes split by TTL. cache_creation_tokens (v2) is treated as
+  // the 5m bucket when the split fields are absent, so old rows still price.
+  cache_creation_5m_tokens?: number;
+  cache_creation_1h_tokens?: number;
   reasoning_tokens?: number;
+  // v3: raw thinking tokens, already counted inside output_tokens. Informational only.
+  thinking_tokens?: number;
   duration_ms?: number | null;
   time_to_first_token_ms?: number | null;
   context_window?: number | null;
@@ -18,6 +24,18 @@ export interface AnalyticsPayload {
   tool_calls?: number;
   web_searches?: number;
   project?: string;
+  // v3 additions — all optional, absent on v2 rows.
+  tool_breakdown?: Record<string, number>;
+  sidechain_messages?: number;
+  sidechain_tokens?: number;
+  is_agent_session?: boolean;
+  stop_reasons?: Record<string, number>;
+  service_tiers?: Record<string, number>;
+  speeds?: Record<string, number>;
+  effort?: string | null;
+  entrypoint?: string | null;
+  cc_version?: string | null;
+  git_branch?: string | null;
 }
 
 export interface AnalyticsSession {
@@ -39,6 +57,22 @@ export interface AnalyticsSession {
   toolCalls: number;
   apiEquivalentCost: number | null;
   codexCredits: number | null;
+  // v3 additions — default to safe values when the source row lacks them.
+  analyticsVersion: number;
+  thinkingTokens: number;
+  cacheCreation5mTokens: number;
+  cacheCreation1hTokens: number;
+  toolBreakdown: Record<string, number>;
+  sidechainMessages: number;
+  sidechainTokens: number;
+  isAgentSession: boolean;
+  stopReasons: Record<string, number>;
+  serviceTiers: Record<string, number>;
+  speeds: Record<string, number>;
+  effort: string | null;
+  entrypoint: string | null;
+  ccVersion: string | null;
+  gitBranch: string | null;
 }
 
 export interface AnalyticsSummary {
@@ -64,8 +98,23 @@ export interface AnalyticsResponse {
   projects: Array<{ name: string; tokens: number; sessions: number }>;
   heatmap: Array<{ day: number; hour: number; sessions: number; tokens: number }>;
   sessions: AnalyticsSession[];
+  // v3 behavioural/quality aggregates. Empty arrays / zeroed splits when the
+  // range contains only v2 (or no) data — components render an empty state.
+  toolMix: Array<{ name: string; count: number }>;
+  threadSplit: { mainTokens: number; subagentTokens: number };
+  entrypoints: Array<{ name: string; sessions: number }>;
+  effortLevels: Array<{ name: string; sessions: number }>;
+  stopReasons: Array<{ name: string; count: number }>;
+  speeds: Array<{ name: string; count: number }>;
+  ccVersions: Array<{ name: string; sessions: number }>;
+  cacheWriteSplit: { fiveMinute: number; oneHour: number };
   range: { days: number; provider: AnalyticsProvider | 'all'; timezone: 'Asia/Dubai' };
   dataQuality: {
+    // Three tiers: v3 (full v3 telemetry), v2 (token-accurate, no v3 detail),
+    // legacy (pre-v2 / unversioned rows — most partial).
+    v3Sessions: number;
+    v2Sessions: number;
+    legacySessions: number;
     measuredSessions: number;
     partialSessions: number;
     apiEquivalentSessions: number;
@@ -105,25 +154,31 @@ const OPENAI_USD_RATES: Record<string, OpenAiUsdRate> = {
 };
 
 // API-equivalent rates are intentionally limited to stable, public model IDs.
-const CLAUDE_USD_RATES: Record<string, { input: number; cacheRead: number; cacheWrite: number; output: number }> = {
-  'claude-fable-5': { input: 10, cacheRead: 1, cacheWrite: 20, output: 50 },
-  'claude-opus-4-8': { input: 5, cacheRead: 0.5, cacheWrite: 10, output: 25 },
-  'claude-opus-4-7': { input: 5, cacheRead: 0.5, cacheWrite: 10, output: 25 },
-  'claude-opus-4-6': { input: 15, cacheRead: 1.5, cacheWrite: 30, output: 75 },
-  'claude-sonnet-5': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
-  'claude-sonnet-4-6': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
-  'claude-sonnet-4-5': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
-  'claude-sonnet-4-5-20250929': { input: 3, cacheRead: 0.3, cacheWrite: 6, output: 15 },
-  'claude-opus-4-5': { input: 5, cacheRead: 0.5, cacheWrite: 10, output: 25 },
-  'claude-opus-4-5-20251101': { input: 5, cacheRead: 0.5, cacheWrite: 10, output: 25 },
-  'claude-haiku-4-5': { input: 1, cacheRead: 0.1, cacheWrite: 2, output: 5 },
-  'claude-haiku-4-5-20251001': { input: 1, cacheRead: 0.1, cacheWrite: 2, output: 5 },
+// Confirmed against https://platform.claude.com/docs/en/about-claude/pricing
+// (fetched 2026-08-17). Cache write rates are published per-model (5m and 1h
+// columns), not derived from a multiplier — Claude Sonnet 5's introductory
+// $2/$10 pricing is now permanent standard pricing per that page's note.
+const CLAUDE_USD_RATES: Record<string, { input: number; cacheRead: number; cacheWrite5m: number; cacheWrite1h: number; output: number }> = {
+  'claude-fable-5': { input: 10, cacheRead: 1, cacheWrite5m: 12.5, cacheWrite1h: 20, output: 50 },
+  'claude-opus-5': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
+  'claude-opus-4-8': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
+  'claude-opus-4-7': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
+  'claude-opus-4-6': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
+  'claude-sonnet-5': { input: 2, cacheRead: 0.2, cacheWrite5m: 2.5, cacheWrite1h: 4, output: 10 },
+  'claude-sonnet-4-6': { input: 3, cacheRead: 0.3, cacheWrite5m: 3.75, cacheWrite1h: 6, output: 15 },
+  'claude-sonnet-4-5': { input: 3, cacheRead: 0.3, cacheWrite5m: 3.75, cacheWrite1h: 6, output: 15 },
+  'claude-sonnet-4-5-20250929': { input: 3, cacheRead: 0.3, cacheWrite5m: 3.75, cacheWrite1h: 6, output: 15 },
+  'claude-opus-4-5': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
+  'claude-opus-4-5-20251101': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
+  'claude-haiku-4-5': { input: 1, cacheRead: 0.1, cacheWrite5m: 1.25, cacheWrite1h: 2, output: 5 },
+  'claude-haiku-4-5-20251001': { input: 1, cacheRead: 0.1, cacheWrite5m: 1.25, cacheWrite1h: 2, output: 5 },
 };
 
 export function calculateEstimates(provider: AnalyticsProvider, model: string, payload: AnalyticsPayload) {
   const input = Number(payload.input_tokens ?? 0);
   const cached = Number(payload.cached_input_tokens ?? 0);
-  const cacheWrite = Number(payload.cache_creation_tokens ?? 0);
+  const cacheWrite5m = Number(payload.cache_creation_5m_tokens ?? payload.cache_creation_tokens ?? 0);
+  const cacheWrite1h = Number(payload.cache_creation_1h_tokens ?? 0);
   const output = Number(payload.output_tokens ?? 0);
 
   if (provider === 'codex') {
@@ -136,6 +191,7 @@ export function calculateEstimates(provider: AnalyticsProvider, model: string, p
     // Codex reports cached input as a subset of input_tokens. Price the
     // uncached remainder at the full rate so cached tokens are not counted twice.
     const uncachedInput = Math.max(0, input - cached);
+    const cacheWrite = cacheWrite5m + cacheWrite1h;
     return {
       apiEquivalentCost: apiRate
         ? (uncachedInput * apiRate.input + cached * apiRate.cached + cacheWrite * (apiRate.cacheWrite ?? apiRate.input) + output * apiRate.output) / 1_000_000
@@ -149,7 +205,7 @@ export function calculateEstimates(provider: AnalyticsProvider, model: string, p
   const rate = CLAUDE_USD_RATES[model.toLowerCase()];
   return {
     apiEquivalentCost: rate
-      ? (input * rate.input + cached * rate.cacheRead + cacheWrite * rate.cacheWrite + output * rate.output) / 1_000_000
+      ? (input * rate.input + cached * rate.cacheRead + cacheWrite5m * rate.cacheWrite5m + cacheWrite1h * rate.cacheWrite1h + output * rate.output) / 1_000_000
       : null,
     codexCredits: null,
   };

@@ -34,6 +34,33 @@ function nullableAverage(values: Array<number | null>) {
   return present.length ? present.reduce((sum, value) => sum + value, 0) / present.length : null;
 }
 
+const PAGE_SIZE = 1000;
+// Safety ceiling so a runaway range can't page forever; well above any
+// realistic 90-day window.
+const MAX_ROWS = 50_000;
+
+// PostgREST truncates at its own row cap regardless of `limit`; page through
+// with `Range` headers until the server reports no more rows remain.
+async function fetchAllRows(usageUrl: string, headers: Record<string, string>): Promise<UsageRow[]> {
+  const rows: UsageRow[] = [];
+  let offset = 0;
+  while (offset < MAX_ROWS) {
+    const res = await fetch(usageUrl, {
+      headers: { ...headers, Range: `${offset}-${offset + PAGE_SIZE - 1}`, Prefer: 'count=exact' },
+      cache: 'no-store',
+    });
+    if (!res.ok && res.status !== 206) throw new Error(`Usage query failed: ${res.status}`);
+    const page = await res.json() as UsageRow[];
+    rows.push(...page);
+    const contentRange = res.headers.get('content-range');
+    const total = contentRange?.split('/')[1];
+    offset += page.length;
+    if (page.length < PAGE_SIZE) break;
+    if (total && total !== '*' && offset >= Number(total)) break;
+  }
+  return rows;
+}
+
 export async function GET(request: NextRequest) {
   const requestedDays = Number(request.nextUrl.searchParams.get('days') ?? 30);
   const days = [1, 7, 30, 90].includes(requestedDays) ? requestedDays : 30;
@@ -42,24 +69,24 @@ export async function GET(request: NextRequest) {
   const empty: AnalyticsResponse = {
     summary: { totalTokens: 0, sessions: 0, activeDays: 0, averageTokensPerSession: 0, apiEquivalentCost: null, codexCredits: null, cacheHitRatio: null, outputInputRatio: null, averageContextUtilization: null, compactions: 0, averageDurationMs: null, averageTimeToFirstTokenMs: null },
     daily: [], providers: [], models: [], projects: [], heatmap: [], sessions: [],
-    range: { days, provider, timezone: 'Asia/Dubai' }, dataQuality: { measuredSessions: 0, partialSessions: 0, apiEquivalentSessions: 0, codexCreditSessions: 0, lastSync: null }, refreshedAt: new Date().toISOString(),
+    toolMix: [], threadSplit: { mainTokens: 0, subagentTokens: 0 }, entrypoints: [], effortLevels: [],
+    stopReasons: [], speeds: [], ccVersions: [], cacheWriteSplit: { fiveMinute: 0, oneHour: 0 },
+    range: { days, provider, timezone: 'Asia/Dubai' }, dataQuality: { v3Sessions: 0, v2Sessions: 0, legacySessions: 0, measuredSessions: 0, partialSessions: 0, apiEquivalentSessions: 0, codexCreditSessions: 0, lastSync: null }, refreshedAt: new Date().toISOString(),
   };
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return NextResponse.json(empty);
 
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
   const providerFilter = provider === 'all' ? 'provider=in.(claude,codex)' : `provider=eq.${provider}`;
-  const usageUrl = `${SUPABASE_URL}/rest/v1/UsageRecord?select=id,provider,timestamp,tokens,model_name,raw_payload&${providerFilter}&timestamp=gte.${encodeURIComponent(since)}&source_type=neq.rate_limit&order=timestamp.desc&limit=3000`;
+  const usageUrl = `${SUPABASE_URL}/rest/v1/UsageRecord?select=id,provider,timestamp,tokens,model_name,raw_payload&${providerFilter}&timestamp=gte.${encodeURIComponent(since)}&source_type=neq.rate_limit&order=timestamp.desc`;
   const syncUrl = `${SUPABASE_URL}/rest/v1/SyncLog?select=synced_at&provider=eq.analytics_v2&status=eq.success&order=synced_at.desc&limit=1`;
   const headers = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
 
   try {
-    const [usageRes, syncRes] = await Promise.all([
-      fetch(usageUrl, { headers, cache: 'no-store' }),
+    const [rows, syncRes] = await Promise.all([
+      fetchAllRows(usageUrl, headers),
       fetch(syncUrl, { headers, cache: 'no-store' }),
     ]);
-    if (!usageRes.ok) throw new Error(`Usage query failed: ${usageRes.status}`);
-    const rows = await usageRes.json() as UsageRow[];
     const syncRows = syncRes.ok ? await syncRes.json() as Array<{ synced_at: string }> : [];
 
     const sessions: AnalyticsSession[] = rows.map((row) => {
@@ -88,6 +115,21 @@ export async function GET(request: NextRequest) {
         contextUtilization: contextWindow > 0 && peakContext > 0 ? Math.min(1, peakContext / contextWindow) : null,
         compactions: Number(payload.compactions ?? 0),
         toolCalls: Number(payload.tool_calls ?? 0),
+        analyticsVersion: Number(payload.analytics_version ?? 2),
+        thinkingTokens: Number(payload.thinking_tokens ?? 0),
+        cacheCreation5mTokens: Number(payload.cache_creation_5m_tokens ?? 0),
+        cacheCreation1hTokens: Number(payload.cache_creation_1h_tokens ?? 0),
+        toolBreakdown: payload.tool_breakdown ?? {},
+        sidechainMessages: Number(payload.sidechain_messages ?? 0),
+        sidechainTokens: Number(payload.sidechain_tokens ?? 0),
+        isAgentSession: Boolean(payload.is_agent_session ?? false),
+        stopReasons: payload.stop_reasons ?? {},
+        serviceTiers: payload.service_tiers ?? {},
+        speeds: payload.speeds ?? {},
+        effort: payload.effort ?? null,
+        entrypoint: payload.entrypoint ?? null,
+        ccVersion: payload.cc_version ?? null,
+        gitBranch: payload.git_branch ?? null,
         ...estimates,
       };
     });
@@ -97,6 +139,13 @@ export async function GET(request: NextRequest) {
     const modelMap = new Map<string, AnalyticsResponse['models'][number]>();
     const projectMap = new Map<string, AnalyticsResponse['projects'][number]>();
     const heatmapMap = new Map<string, AnalyticsResponse['heatmap'][number]>();
+    const toolMixMap = new Map<string, number>();
+    const entrypointMap = new Map<string, number>();
+    const effortMap = new Map<string, number>();
+    const stopReasonMap = new Map<string, number>();
+    const speedMap = new Map<string, number>();
+    const ccVersionMap = new Map<string, number>();
+    let mainTokens = 0, subagentTokens = 0, cacheWrite5m = 0, cacheWrite1h = 0;
     for (const session of sessions) {
       const local = dubaiParts(session.timestamp);
       const daily = dailyMap.get(local.date) ?? { date: local.date, input: 0, output: 0, cached: 0, reasoning: 0, sessions: 0 };
@@ -112,6 +161,19 @@ export async function GET(request: NextRequest) {
       const heatKey = `${local.day}:${local.hour}`;
       const heat = heatmapMap.get(heatKey) ?? { day: local.day, hour: local.hour, sessions: 0, tokens: 0 };
       heat.sessions++; heat.tokens += session.totalTokens; heatmapMap.set(heatKey, heat);
+      for (const [name, count] of Object.entries(session.toolBreakdown)) toolMixMap.set(name, (toolMixMap.get(name) ?? 0) + count);
+      if (session.entrypoint) entrypointMap.set(session.entrypoint, (entrypointMap.get(session.entrypoint) ?? 0) + 1);
+      if (session.effort) effortMap.set(session.effort, (effortMap.get(session.effort) ?? 0) + 1);
+      for (const [name, count] of Object.entries(session.stopReasons)) stopReasonMap.set(name, (stopReasonMap.get(name) ?? 0) + count);
+      for (const [name, count] of Object.entries(session.speeds)) speedMap.set(name, (speedMap.get(name) ?? 0) + count);
+      if (session.ccVersion) ccVersionMap.set(session.ccVersion, (ccVersionMap.get(session.ccVersion) ?? 0) + 1);
+      // Agent-subthread rows (isAgentSession) are entirely subagent spend;
+      // for ordinary sessions, totalTokens already excludes inline sidechain
+      // turns, which are tracked separately via sidechainTokens.
+      if (session.isAgentSession) subagentTokens += session.totalTokens;
+      else { mainTokens += session.totalTokens; subagentTokens += session.sidechainTokens; }
+      cacheWrite5m += session.cacheCreation5mTokens;
+      cacheWrite1h += session.cacheCreation1hTokens;
     }
 
     const totalTokens = sessions.reduce((sum, session) => sum + session.totalTokens, 0);
@@ -120,6 +182,12 @@ export async function GET(request: NextRequest) {
     const output = sessions.reduce((sum, session) => sum + session.outputTokens, 0);
     const usdValues = sessions.map((session) => session.apiEquivalentCost).filter((value): value is number => value !== null);
     const creditValues = sessions.map((session) => session.codexCredits).filter((value): value is number => value !== null);
+    let v3Sessions = 0, v2Sessions = 0, legacySessions = 0;
+    for (const session of sessions) {
+      if (session.analyticsVersion === 3) v3Sessions++;
+      else if (session.analyticsVersion === 2) v2Sessions++;
+      else legacySessions++;
+    }
 
     return NextResponse.json({
       summary: {
@@ -141,11 +209,22 @@ export async function GET(request: NextRequest) {
       models: [...modelMap.values()].sort((a, b) => b.tokens - a.tokens),
       projects: [...projectMap.values()].sort((a, b) => b.tokens - a.tokens).slice(0, 10),
       heatmap: [...heatmapMap.values()],
-      sessions: sessions.slice(0, 100),
+      sessions: sessions.slice(0, 500),
+      toolMix: [...toolMixMap.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 10),
+      threadSplit: { mainTokens, subagentTokens },
+      entrypoints: [...entrypointMap.entries()].map(([name, sessionCount]) => ({ name, sessions: sessionCount })).sort((a, b) => b.sessions - a.sessions),
+      effortLevels: [...effortMap.entries()].map(([name, sessionCount]) => ({ name, sessions: sessionCount })).sort((a, b) => b.sessions - a.sessions),
+      stopReasons: [...stopReasonMap.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+      speeds: [...speedMap.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+      ccVersions: [...ccVersionMap.entries()].map(([name, sessionCount]) => ({ name, sessions: sessionCount })).sort((a, b) => b.sessions - a.sessions),
+      cacheWriteSplit: { fiveMinute: cacheWrite5m, oneHour: cacheWrite1h },
       range: { days, provider, timezone: 'Asia/Dubai' },
       dataQuality: {
-        measuredSessions: sessions.filter((session) => Number(rows.find((row) => row.id === session.id)?.raw_payload?.analytics_version) === 2).length,
-        partialSessions: sessions.filter((session) => Number(rows.find((row) => row.id === session.id)?.raw_payload?.analytics_version) !== 2).length,
+        v3Sessions: v3Sessions,
+        v2Sessions: v2Sessions,
+        legacySessions: legacySessions,
+        measuredSessions: v3Sessions + v2Sessions,
+        partialSessions: legacySessions,
         apiEquivalentSessions: usdValues.length,
         codexCreditSessions: creditValues.length,
         lastSync: syncRows[0]?.synced_at ?? null,

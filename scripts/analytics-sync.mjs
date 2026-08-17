@@ -56,28 +56,81 @@ function projectLabel(cwd) {
   return projectMatch?.[1] ?? path.basename(normalized) ?? 'Unknown';
 }
 
+// Agent subthread files (`agent-*.jsonl`, walked from `subagents/` directories)
+// carry the *parent* session's `sessionId` on every row, not a unique one — so
+// parsing them as standalone sessions with that raw id would collide with the
+// parent conversation's upsert key. Distinguish by filename.
+function isAgentFile(file) {
+  return path.basename(file).startsWith('agent-');
+}
+
 function parseClaude(file) {
   const rows = readJsonl(file);
-  const assistantRows = rows.filter((row) => row.type === 'assistant' && row.message?.usage);
-  if (!assistantRows.length) return null;
+  const allAssistantRows = rows.filter((row) => row.type === 'assistant' && row.message?.usage);
+  if (!allAssistantRows.length) return null;
 
-  const first = assistantRows[0];
-  const last = assistantRows.at(-1);
-  const usage = assistantRows.reduce((total, row) => {
+  // Sidechain rows (Task-spawned subagent turns) can appear inline in a main
+  // conversation file, not only in separate agent-*.jsonl files. Keep them out
+  // of the main-thread totals and report them separately.
+  const assistantRows = allAssistantRows.filter((row) => row.isSidechain !== true);
+  const sidechainRows = allAssistantRows.filter((row) => row.isSidechain === true);
+  const mainRows = assistantRows.length ? assistantRows : allAssistantRows;
+
+  const first = mainRows[0];
+  const last = mainRows.at(-1);
+  const usage = mainRows.reduce((total, row) => {
     const current = row.message.usage ?? {};
     total.input += Number(current.input_tokens ?? 0);
     total.output += Number(current.output_tokens ?? 0);
     total.cacheRead += Number(current.cache_read_input_tokens ?? 0);
     total.cacheWrite += Number(current.cache_creation_input_tokens ?? 0);
+    total.cacheWrite5m += Number(current.cache_creation?.ephemeral_5m_input_tokens ?? 0);
+    total.cacheWrite1h += Number(current.cache_creation?.ephemeral_1h_input_tokens ?? 0);
+    total.thinking += Number(current.output_tokens_details?.thinking_tokens ?? 0);
     total.webSearches += Number(current.server_tool_use?.web_search_requests ?? 0);
     total.webFetches += Number(current.server_tool_use?.web_fetch_requests ?? 0);
     return total;
-  }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0, webFetches: 0 });
+  }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWrite5m: 0, cacheWrite1h: 0, thinking: 0, webSearches: 0, webFetches: 0 });
+
+  const sidechainTokens = sidechainRows.reduce((sum, row) => {
+    const current = row.message.usage ?? {};
+    return sum + Number(current.input_tokens ?? 0) + Number(current.output_tokens ?? 0)
+      + Number(current.cache_read_input_tokens ?? 0) + Number(current.cache_creation_input_tokens ?? 0);
+  }, 0);
+
+  const toolBreakdown = {};
+  let toolCalls = 0;
+  for (const row of rows) {
+    if (row.type !== 'assistant') continue;
+    for (const item of row.message?.content ?? []) {
+      if (item.type !== 'tool_use') continue;
+      toolCalls++;
+      const name = item.name ?? 'unknown';
+      toolBreakdown[name] = (toolBreakdown[name] ?? 0) + 1;
+    }
+  }
+
+  const stopReasons = {};
+  const serviceTiers = {};
+  const speeds = {};
+  for (const row of mainRows) {
+    const stopReason = row.message?.stop_reason;
+    if (stopReason) stopReasons[stopReason] = (stopReasons[stopReason] ?? 0) + 1;
+    const serviceTier = row.message?.usage?.service_tier;
+    if (serviceTier) serviceTiers[serviceTier] = (serviceTiers[serviceTier] ?? 0) + 1;
+    const speed = row.message?.usage?.speed;
+    if (speed) speeds[speed] = (speeds[speed] ?? 0) + 1;
+  }
 
   const startedAt = Date.parse(first.timestamp ?? rows[0]?.timestamp ?? '');
   const endedAt = Date.parse(last.timestamp ?? '');
-  const models = [...new Set(assistantRows.map((row) => row.message?.model).filter(Boolean))];
-  const sessionId = first.sessionId ?? first.session_id ?? path.basename(file, '.jsonl');
+  const models = [...new Set(mainRows.map((row) => row.message?.model).filter(Boolean))];
+  const parentSessionId = first.sessionId ?? first.session_id ?? path.basename(file, '.jsonl');
+  const isAgentSession = isAgentFile(file);
+  // Keep the sessionId (and therefore the `analytics-v2:claude:<sessionId>`
+  // upsert key) distinct from the parent conversation's when this file is a
+  // subagent thread, so the two never collide and overwrite each other.
+  const sessionId = isAgentSession && first.agentId ? `${parentSessionId}:agent:${first.agentId}` : parentSessionId;
   const cwd = first.cwd ?? rows.find((row) => row.cwd)?.cwd;
 
   return {
@@ -87,18 +140,34 @@ function parseClaude(file) {
     model: models.at(-1) ?? 'unknown',
     totalTokens: usage.input + usage.output + usage.cacheRead + usage.cacheWrite,
     payload: {
-      analytics_version: 2,
+      analytics_version: 3,
       input_tokens: usage.input,
       output_tokens: usage.output,
       cached_input_tokens: usage.cacheRead,
       cache_creation_tokens: usage.cacheWrite,
-      reasoning_tokens: 0,
+      cache_creation_5m_tokens: usage.cacheWrite5m,
+      cache_creation_1h_tokens: usage.cacheWrite1h,
+      // Thinking tokens are already counted inside output_tokens above —
+      // this is an informational subset, not an addition to the total.
+      reasoning_tokens: usage.thinking,
+      thinking_tokens: usage.thinking,
       duration_ms: Number.isFinite(startedAt) && Number.isFinite(endedAt) ? Math.max(0, endedAt - startedAt) : null,
       time_to_first_token_ms: null,
       context_window: null,
       peak_context_tokens: null,
       compactions: rows.filter((row) => row.type === 'system' && row.subtype === 'compact_boundary').length,
-      tool_calls: rows.filter((row) => row.type === 'assistant').reduce((count, row) => count + (row.message?.content ?? []).filter((item) => item.type === 'tool_use').length, 0),
+      tool_calls: toolCalls,
+      tool_breakdown: toolBreakdown,
+      sidechain_messages: sidechainRows.length,
+      sidechain_tokens: sidechainTokens,
+      is_agent_session: isAgentSession,
+      stop_reasons: stopReasons,
+      service_tiers: serviceTiers,
+      speeds: speeds,
+      effort: last.effort ?? null,
+      entrypoint: last.entrypoint ?? null,
+      cc_version: last.version ?? null,
+      git_branch: last.gitBranch ?? null,
       web_searches: usage.webSearches,
       web_fetches: usage.webFetches,
       project: projectLabel(cwd),

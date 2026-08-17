@@ -2,6 +2,7 @@
 tags:
   - project
   - plan
+  - usage-multi-model
 ---
 
 # Usage Monitor V2 — Detailed Statistics

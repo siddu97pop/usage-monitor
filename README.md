@@ -1,3 +1,9 @@
+---
+tags:
+  - project
+  - usage-multi-model
+---
+
 # LexiTools Usage Monitor
 
 Private single-page dashboard for tracking AI usage across Codex (ChatGPT subscription), Claude (subscription), and Ollama (Pro plan).
@@ -59,37 +65,55 @@ Open [http://localhost:3000](http://localhost:3000).
 ```
 usage-monitor/
 ├── app/
-│   ├── layout.tsx           # Root layout, fonts, global styles
-│   ├── page.tsx             # Main page — fetches & displays 3 provider cards
-│   ├── globals.css          # Tailwind + custom overrides
-│   └── api/usage/route.ts   # GET /api/usage — returns ProviderStats[]
+│   ├── layout.tsx                  # Root layout, fonts, global styles
+│   ├── page.tsx                    # Overview page — 3 provider cards
+│   ├── statistics/page.tsx         # Detailed Statistics page
+│   ├── globals.css                 # Tailwind + custom overrides
+│   └── api/
+│       ├── usage/route.ts          # GET /api/usage — Overview provider cards
+│       ├── statistics/route.ts     # GET /api/statistics — Detailed Statistics data
+│       └── proxy/ollama/route.ts   # Ollama proxy endpoint
 ├── components/
-│   ├── Header.tsx           # Title + refresh button
-│   ├── ProviderCard.tsx     # One card per provider
-│   └── MiniBarChart.tsx     # Recharts bar chart (hourly / weekly)
+│   ├── Header.tsx                  # Title + refresh button
+│   ├── PageTabs.tsx                # Overview / Detailed Statistics nav
+│   ├── ProviderCard.tsx            # One card per provider (Overview)
+│   ├── PlanUsageLimits.tsx         # Plan-window usage bars
+│   ├── MiniBarChart.tsx            # Recharts bar chart (hourly / weekly, Overview)
+│   └── StatisticsDashboard.tsx     # Detailed Statistics — charts, session explorer
 ├── lib/
-│   ├── prisma.ts            # Prisma client singleton
-│   ├── mock-data.ts         # Static fallback data (used if DB is empty)
-│   └── usage-service.ts     # Aggregation logic — DB queries → ProviderStats
+│   ├── prisma.ts                   # Prisma client singleton — used for reads that stay server-side
+│   ├── usage-service.ts            # Overview aggregation — DB queries → ProviderStats
+│   ├── analytics.ts                # Analytics types, rate cards, calculateEstimates()
+│   ├── claude-usage.ts             # Claude plan-window usage
+│   ├── codex-usage.ts              # Codex plan-window usage
+│   ├── ollama-sync.ts              # Ollama health check
+│   └── mock-data.ts                # Static fallback data (used if DB is empty)
+├── scripts/
+│   ├── analytics-sync.mjs          # Cron: parses Claude/Codex JSONL → Supabase (Detailed Statistics)
+│   ├── claude-sync.mjs             # Cron: Claude plan-window sync
+│   ├── codex-sync.mjs              # Cron: Codex plan-window sync
+│   ├── codex-rate-limits.mjs       # Cron: Codex rate-limit snapshot
+│   └── verify-analytics-rates.ts   # `npm test` — rate-card assertions
 ├── prisma/
-│   ├── schema.prisma        # Data model
-│   └── seed.ts              # Seed script (7 days of mock hourly data)
+│   └── schema.prisma               # Data model (UsageRecord, SyncLog, ...)
 ├── types/
-│   └── usage.ts             # Shared TypeScript types
-└── .env.example
+│   └── usage.ts                    # Shared TypeScript types
+└── .env.local
 ```
+
+The Detailed Statistics page (`/statistics`) reads via **Supabase PostgREST** (`SUPABASE_URL` + `SUPABASE_ANON_KEY`), not Prisma — `app/api/statistics/route.ts` fetches `UsageRecord` rows directly over HTTP. Prisma/`DIRECT_URL` is still used by the sync scripts (`scripts/*.mjs`, run from cron every 5 minutes on the VPS) to write those rows.
 
 ---
 
 ## Data Sources — Important Note
 
-| Provider | Data Type | v1 Strategy | Future |
-|----------|-----------|-------------|--------|
-| **Codex** | ChatGPT subscription messages | Manual import / seed data | OpenAI Compliance API (cloud Codex only) |
-| **Claude** | Anthropic subscription messages | Manual import / seed data | Browser-assisted session capture |
-| **Ollama** | Local + Pro plan requests | Proxy logging or manual import | Ollama Pro API when available |
+| Provider | Data Type | Sync | Detail |
+|----------|-----------|------|--------|
+| **Codex** | ChatGPT subscription sessions | `scripts/codex-sync.mjs` + `scripts/analytics-sync.mjs` (cron, 5 min) | Parses local `~/.codex/sessions` rollout JSONL |
+| **Claude** | Anthropic subscription sessions | `scripts/claude-sync.mjs` + `scripts/analytics-sync.mjs` (cron, 5 min) | Parses local `~/.claude/projects` JSONL — counts, enums, and model IDs only; conversation text never leaves the VPS |
+| **Ollama** | Local + Pro plan requests | `lib/ollama-sync.ts` (live health check) | Proxy logging or manual import |
 
-Codex and Claude are **subscription-based**, not API-billed. Neither exposes a standard usage API for individual accounts. The system is designed to accept manually imported usage records and will upgrade to automated ingestion as provider APIs become available.
+Codex and Claude are **subscription-based**, not API-billed. `analytics-sync.mjs` reads local session logs on the VPS and upserts session-level telemetry (token counts, tool-call counts, model IDs, timestamps) to Supabase — never prompt or response text. `lib/analytics.ts` turns that telemetry into API-equivalent cost *estimates*, clearly labelled as estimates, not subscription charges.
 
 ---
 
@@ -183,7 +207,7 @@ No other changes needed — the card grid is data-driven.
 ## Roadmap
 
 - [ ] Manual import UI (drag-and-drop CSV)
-- [ ] Ollama proxy endpoint (`/api/ingest/ollama`)
 - [ ] Usage alerts (threshold notifications)
 - [ ] Cost projections (weekly / monthly)
 - [ ] Export to CSV
+- [ ] OAuth API `extra_usage` block (real credit spend vs. the $2000 monthly limit) — see `V3_IMPLEMENTATION_PLAN.md`
