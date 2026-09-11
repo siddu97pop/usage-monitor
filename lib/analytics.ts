@@ -125,10 +125,11 @@ export interface AnalyticsResponse {
 }
 
 const CODEX_CREDIT_RATES: Record<string, { input: number; cached: number; output: number }> = {
-  'gpt-5.6-sol': { input: 125, cached: 12.5, output: 750 },
-  'gpt-5.6-terra': { input: 62.5, cached: 6.25, output: 375 },
-  'gpt-5.6-luna': { input: 25, cached: 2.5, output: 150 },
-  'gpt-5.6': { input: 125, cached: 12.5, output: 750 },
+  'gpt-6-astra': { input: 250, cached: 25, output: 1250 },
+  'gpt-5.6-sol': { input: 100, cached: 10, output: 500 },
+  'gpt-5.6-terra': { input: 50, cached: 5, output: 300 },
+  'gpt-5.6-luna': { input: 5, cached: 0.5, output: 30 },
+  'gpt-5.6': { input: 100, cached: 10, output: 500 },
   'gpt-5.5': { input: 125, cached: 12.5, output: 750 },
   'gpt-5.4': { input: 62.5, cached: 6.25, output: 375 },
   'gpt-5.4-mini': { input: 18.75, cached: 1.875, output: 113 },
@@ -141,13 +142,16 @@ interface OpenAiUsdRate {
   long?: { input: number; cached: number; cacheWrite?: number; output: number };
 }
 
-// Standard API rates per 1M tokens, effective 2026-07-21. Requests above
-// 272K input tokens use the long-context tier where one is published.
+// Standard API rates per 1M tokens, per https://platform.openai.com/docs/pricing
+// (fetched 2026-09-11). Requests above 272K input tokens use the long-context
+// tier where one is published. GPT-5.6 Sol's pricing below is promotional,
+// published as in effect at least through November 21, 2026.
 const OPENAI_USD_RATES: Record<string, OpenAiUsdRate> = {
-  'gpt-5.6-sol': { short: { input: 5, cached: 0.5, cacheWrite: 6.25, output: 30 }, long: { input: 10, cached: 1, cacheWrite: 12.5, output: 45 } },
-  'gpt-5.6': { short: { input: 5, cached: 0.5, cacheWrite: 6.25, output: 30 }, long: { input: 10, cached: 1, cacheWrite: 12.5, output: 45 } },
-  'gpt-5.6-terra': { short: { input: 2.5, cached: 0.25, cacheWrite: 3.125, output: 15 }, long: { input: 5, cached: 0.5, cacheWrite: 6.25, output: 22.5 } },
-  'gpt-5.6-luna': { short: { input: 1, cached: 0.1, cacheWrite: 1.25, output: 6 }, long: { input: 2, cached: 0.2, cacheWrite: 2.5, output: 9 } },
+  'gpt-6-astra': { short: { input: 10, cached: 1, cacheWrite: 12.5, output: 50 }, long: { input: 20, cached: 2, cacheWrite: 25, output: 75 } },
+  'gpt-5.6-sol': { short: { input: 4, cached: 0.4, cacheWrite: 5, output: 20 }, long: { input: 8, cached: 0.8, cacheWrite: 10, output: 30 } },
+  'gpt-5.6': { short: { input: 4, cached: 0.4, cacheWrite: 5, output: 20 }, long: { input: 8, cached: 0.8, cacheWrite: 10, output: 30 } },
+  'gpt-5.6-terra': { short: { input: 2, cached: 0.2, cacheWrite: 2.5, output: 12 }, long: { input: 4, cached: 0.4, cacheWrite: 5, output: 18 } },
+  'gpt-5.6-luna': { short: { input: 0.2, cached: 0.02, cacheWrite: 0.25, output: 1.2 }, long: { input: 0.4, cached: 0.04, cacheWrite: 0.5, output: 1.8 } },
   'gpt-5.5': { short: { input: 5, cached: 0.5, output: 30 }, long: { input: 10, cached: 1, output: 45 } },
   'gpt-5.4': { short: { input: 2.5, cached: 0.25, output: 15 }, long: { input: 5, cached: 0.5, output: 22.5 } },
   'gpt-5.4-mini': { short: { input: 0.75, cached: 0.075, output: 4.5 } },
@@ -155,10 +159,14 @@ const OPENAI_USD_RATES: Record<string, OpenAiUsdRate> = {
 
 // API-equivalent rates are intentionally limited to stable, public model IDs.
 // Confirmed against https://platform.claude.com/docs/en/about-claude/pricing
-// (fetched 2026-08-17). Cache write rates are published per-model (5m and 1h
+// (fetched 2026-09-11). Cache write rates are published per-model (5m and 1h
 // columns), not derived from a multiplier — Claude Sonnet 5's introductory
 // $2/$10 pricing is now permanent standard pricing per that page's note.
+// Claude Fable 5.1 / Claude Mythos 5.1 use a 0.025x cache-read multiplier
+// ($0.25/MTok) instead of the standard 0.1x used by every other model here.
 const CLAUDE_USD_RATES: Record<string, { input: number; cacheRead: number; cacheWrite5m: number; cacheWrite1h: number; output: number }> = {
+  'claude-fable-5-1': { input: 10, cacheRead: 0.25, cacheWrite5m: 12.5, cacheWrite1h: 20, output: 50 },
+  'claude-mythos-5-1': { input: 10, cacheRead: 0.25, cacheWrite5m: 12.5, cacheWrite1h: 20, output: 50 },
   'claude-fable-5': { input: 10, cacheRead: 1, cacheWrite5m: 12.5, cacheWrite1h: 20, output: 50 },
   'claude-opus-5': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
   'claude-opus-4-8': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },

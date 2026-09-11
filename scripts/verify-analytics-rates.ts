@@ -24,11 +24,20 @@ const longContext = calculateEstimates('codex', 'gpt-5.4', {
 closeTo(longContext.codexCredits, 66.25);
 closeTo(longContext.apiEquivalentCost, 4.55);
 
+// gpt-5.6-sol: promotional pricing per https://platform.openai.com/docs/pricing
+// (fetched 2026-09-11) — $4 short input / 25x credit multiplier.
 const currentCreditRate = calculateEstimates('codex', 'gpt-5.6-sol', {
   input_tokens: 1_000_000,
 });
-closeTo(currentCreditRate.codexCredits, 125);
-closeTo(currentCreditRate.apiEquivalentCost, 5);
+closeTo(currentCreditRate.codexCredits, 100);
+closeTo(currentCreditRate.apiEquivalentCost, 4);
+
+// gpt-6-astra: $10 short input / $20 long input per the same pricing page.
+const astraShort = calculateEstimates('codex', 'gpt-6-astra', {
+  input_tokens: 1_000_000,
+});
+closeTo(astraShort.codexCredits, 250);
+closeTo(astraShort.apiEquivalentCost, 10);
 
 assert.deepEqual(calculateEstimates('codex', 'unknown-model', { input_tokens: 1_000_000 }), {
   apiEquivalentCost: null,
@@ -90,5 +99,17 @@ const withoutReasoning = calculateEstimates('claude', 'claude-opus-5', {
   output_tokens: 100_000,
 });
 closeTo(withReasoning.apiEquivalentCost as number, withoutReasoning.apiEquivalentCost as number);
+
+// claude-fable-5-1: confirmed $10 input / $12.50 5m-write / $20 1h-write /
+// $0.25 cache-read (0.025x, not the standard 0.1x) / $50 output per
+// https://platform.claude.com/docs/en/about-claude/pricing (fetched 2026-09-11).
+const fable51 = calculateEstimates('claude', 'claude-fable-5-1', {
+  input_tokens: 1_000_000,
+  cached_input_tokens: 200_000,
+  cache_creation_5m_tokens: 100_000,
+  output_tokens: 100_000,
+});
+// 1,000,000*10 + 200,000*0.25 + 100,000*12.5 + 100,000*50, all /1e6
+closeTo(fable51.apiEquivalentCost, 10 + 0.05 + 1.25 + 5);
 
 console.log('Analytics rate checks passed.');
