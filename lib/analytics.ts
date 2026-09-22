@@ -159,15 +159,17 @@ const OPENAI_USD_RATES: Record<string, OpenAiUsdRate> = {
 
 // API-equivalent rates are intentionally limited to stable, public model IDs.
 // Confirmed against https://platform.claude.com/docs/en/about-claude/pricing
-// (fetched 2026-09-11). Cache write rates are published per-model (5m and 1h
+// (fetched 2026-09-22). Cache write rates are published per-model (5m and 1h
 // columns), not derived from a multiplier — Claude Sonnet 5's introductory
 // $2/$10 pricing is now permanent standard pricing per that page's note.
 // Claude Fable 5.1 / Claude Mythos 5.1 use a 0.025x cache-read multiplier
-// ($0.25/MTok) instead of the standard 0.1x used by every other model here.
+// ($0.25/MTok) and Claude Opus 5.5 uses 0.05x ($0.20/MTok), instead of the
+// standard 0.1x used by every other model here.
 const CLAUDE_USD_RATES: Record<string, { input: number; cacheRead: number; cacheWrite5m: number; cacheWrite1h: number; output: number }> = {
   'claude-fable-5-1': { input: 10, cacheRead: 0.25, cacheWrite5m: 12.5, cacheWrite1h: 20, output: 50 },
   'claude-mythos-5-1': { input: 10, cacheRead: 0.25, cacheWrite5m: 12.5, cacheWrite1h: 20, output: 50 },
   'claude-fable-5': { input: 10, cacheRead: 1, cacheWrite5m: 12.5, cacheWrite1h: 20, output: 50 },
+  'claude-opus-5-5': { input: 4, cacheRead: 0.2, cacheWrite5m: 5, cacheWrite1h: 8, output: 20 },
   'claude-opus-5': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
   'claude-opus-4-8': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
   'claude-opus-4-7': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
