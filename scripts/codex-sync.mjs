@@ -62,11 +62,8 @@ const sessions = sqlite
 
 sqlite.close();
 
-if (sessions.length === 0) {
-  console.log(`[${new Date().toISOString()}] No sessions to sync.`);
-  process.exit(0);
-}
-
+// No recent sessions is not a reason to stop: the rate-limit snapshot below
+// still needs refreshing, or the plan bars go stale.
 console.log(`[${new Date().toISOString()}] Syncing ${sessions.length} Codex sessions...`);
 
 // ── Connect to Supabase via pg ────────────────────────────────────────────────
