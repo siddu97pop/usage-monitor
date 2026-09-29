@@ -159,7 +159,7 @@ const OPENAI_USD_RATES: Record<string, OpenAiUsdRate> = {
 
 // API-equivalent rates are intentionally limited to stable, public model IDs.
 // Confirmed against https://platform.claude.com/docs/en/about-claude/pricing
-// (fetched 2026-09-22). Cache write rates are published per-model (5m and 1h
+// (fetched 2026-09-29). Cache write rates are published per-model (5m and 1h
 // columns), not derived from a multiplier — Claude Sonnet 5's introductory
 // $2/$10 pricing is now permanent standard pricing per that page's note.
 // Claude Fable 5.1 / Claude Mythos 5.1 use a 0.025x cache-read multiplier
@@ -174,6 +174,7 @@ const CLAUDE_USD_RATES: Record<string, { input: number; cacheRead: number; cache
   'claude-opus-4-8': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
   'claude-opus-4-7': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
   'claude-opus-4-6': { input: 5, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, output: 25 },
+  'claude-sonnet-5-5': { input: 2, cacheRead: 0.2, cacheWrite5m: 2.5, cacheWrite1h: 4, output: 10 },
   'claude-sonnet-5': { input: 2, cacheRead: 0.2, cacheWrite5m: 2.5, cacheWrite1h: 4, output: 10 },
   'claude-sonnet-4-6': { input: 3, cacheRead: 0.3, cacheWrite5m: 3.75, cacheWrite1h: 6, output: 15 },
   'claude-sonnet-4-5': { input: 3, cacheRead: 0.3, cacheWrite5m: 3.75, cacheWrite1h: 6, output: 15 },

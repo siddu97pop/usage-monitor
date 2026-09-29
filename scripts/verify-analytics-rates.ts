@@ -124,4 +124,16 @@ const opus55 = calculateEstimates('claude', 'claude-opus-5-5', {
 // 1,000,000*4 + 200,000*0.2 + 100,000*5 + 100,000*20, all /1e6
 closeTo(opus55.apiEquivalentCost, 4 + 0.04 + 0.5 + 2);
 
+// claude-sonnet-5-5: confirmed $2 input / $2.50 5m-write / $4 1h-write /
+// $0.20 cache-read (standard 0.1x) / $10 output per
+// https://platform.claude.com/docs/en/about-claude/pricing (fetched 2026-09-29).
+const sonnet55 = calculateEstimates('claude', 'claude-sonnet-5-5', {
+  input_tokens: 1_000_000,
+  cached_input_tokens: 200_000,
+  cache_creation_5m_tokens: 100_000,
+  output_tokens: 100_000,
+});
+// 1,000,000*2 + 200,000*0.2 + 100,000*2.5 + 100,000*10, all /1e6
+closeTo(sonnet55.apiEquivalentCost, 2 + 0.04 + 0.25 + 1);
+
 console.log('Analytics rate checks passed.');
